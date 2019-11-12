@@ -1,0 +1,57 @@
+#!/bin/sh
+
+__BASH_ENABLE_TIMEOFDAY=
+
+if [ -n "${BASH_VERSION-}" ]; then
+	enable -f "$HOME/scm/bash-builtin-extas/timing" enable_timeofday
+	enable_timeofday
+	__BASH_ENABLE_TIMEOFDAY=1
+fi
+
+gettimeofday() {
+	date '+%s%N'
+}
+
+bash_timing() {
+	local LANG=C rc=$?
+
+	if [ "$BASH_COMMAND" == "$PROMPT_COMMAND" ]; then
+		if [ -z "${__BASH_TIMING__-}" ]; then
+			return 0
+		fi
+
+		local us
+
+		[ -n "${__BASH_ENABLE_TIMEOFDAY-}" ] &&
+			us="${TIMEOFDAY}" ||
+			us=$(( $(gettimeofday) / 1000 ))
+
+		us=$(( $us - $__BASH_TIMING__ ))
+
+		if [ $us -gt 500000 ] || [  "$rc" != 0 ]; then
+			local pair i
+
+			for pair in 3600000000:h 60000000:m 1000000:s 1000:ms 0:us; do
+				i="${pair%:*}"
+				[ $us -gt $i ] ||
+					continue
+				printf '\033[1;31m%s\033[0m :: \033[1;33m' "$rc"
+				if [ $i != 0 ]; then
+					printf "%g" "$(($us / $i)).$(($us / ($i / 100) % 100))"
+				else
+					printf '%d' "$us"
+				fi
+				printf " %s\033[0m\n" "${pair#*:}"
+				break
+			done >&2
+		fi
+		__BASH_TIMING__=
+	elif [ -z "${__BASH_TIMING__-}" ]; then
+		[ -n "${__BASH_ENABLE_TIMEOFDAY-}" ] &&
+			__BASH_TIMING__="${TIMEOFDAY}" ||
+			__BASH_TIMING__=$(( $(gettimeofday) / 1000 ))
+	fi
+}
+
+#PROMPT_COMMAND="${PROMPT_COMMAND:-:}"
+trap 'bash_timing' DEBUG
